@@ -48,7 +48,7 @@ export function termFrequency(text) {
   const tf = new Map();
   const tokens = text
     .toLowerCase()
-    .replace(/[^a-z0-9₂\-']/g, " ")
+    .replace(/[^a-z0-9çğıöşüâîû₂\-']/g, " ")
     .split(/\s+/)
     .filter((t) => t.length > 1);
   for (const t of tokens) {

@@ -33,6 +33,33 @@ export class ChatEngine {
   }
 
   /**
+   * Fetch a model from the catalog, retrying on transient cloud-catalog
+   * errors (HTTP 429 / "too many requests" / empty catalog). The weights are
+   * cached locally; this only works around throttling of the metadata fetch.
+   */
+  async _getModelWithRetry(catalog, alias, maxAttempts = 12) {
+    const isTransient = (msg) =>
+      /too many requests|429|No models were returned|Failed to process|get_model_list/i.test(msg);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await catalog.getModel(alias);
+      } catch (err) {
+        const msg = err?.message ?? String(err);
+        if (!isTransient(msg) || attempt === maxAttempts) throw err;
+        const delayMs = Math.min(15000 + (attempt - 1) * 15000, 90000); // 15s→90s cap
+        this._emitStatus(
+          "catalog",
+          `Foundry Catalog is rate-limited; retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt}/${maxAttempts})...`
+        );
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+    // Unreachable: loop either returns or throws.
+    throw new Error("Failed to fetch model from catalog after retries.");
+  }
+
+  /**
    * Initialize the engine: create Foundry Local manager, discover and load
    * the best model variant for this hardware, and open the vector store.
    */
@@ -44,7 +71,11 @@ export class ChatEngine {
     const catalog = manager.catalog;
 
     this._emitStatus("catalog", "Discovering available models...");
-    this.model = await catalog.getModel(config.model);
+    // The SDK's catalog.getModel() always refreshes the model list from the
+    // cloud Foundry Catalog on first use, which can return HTTP 429
+    // (rate-limited) transiently. The model itself is served locally, so we
+    // retry with backoff until a clear window lets the catalog fetch through.
+    this.model = await this._getModelWithRetry(catalog, config.model);
     this.modelAlias = this.model.alias;
 
     // The SDK auto-selects the best variant for this hardware (GPU > NPU > CPU)
@@ -106,7 +137,10 @@ export class ChatEngine {
    * Format retrieved chunks into a context block for the prompt.
    */
   _buildContext(chunks) {
-    if (chunks.length === 0) {
+    // Relevance guard: if nothing matched well, don't feed weak context —
+    // this stops the model from hallucinating on greetings / off-topic input.
+    const topScore = chunks.length ? Math.max(...chunks.map((c) => c.score || 0)) : 0;
+    if (chunks.length === 0 || topScore < 0.18) {
       return "No relevant documents found in local knowledge base.";
     }
 
@@ -139,7 +173,7 @@ export class ChatEngine {
     ];
 
     // 3. Call the local model via the native chat client
-    this.chatClient.settings.maxTokens = this.compactMode ? 512 : 1024;
+    this.chatClient.settings.maxTokens = this.compactMode ? 384 : 768;
     const response = await this.chatClient.completeChat(messages);
 
     return {
@@ -175,7 +209,7 @@ export class ChatEngine {
     ];
 
     // 3. Stream from the local model via the SDK's callback-based streaming
-    this.chatClient.settings.maxTokens = this.compactMode ? 512 : 1024;
+    this.chatClient.settings.maxTokens = this.compactMode ? 384 : 768;
 
     // Buffer chunks from the callback and yield them as an async iterable
     const textChunks = [];
