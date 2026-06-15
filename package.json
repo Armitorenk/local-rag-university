@@ -1,13 +1,14 @@
 {
-  "name": "gas-field-local-rag",
+  "name": "local-rag-university",
   "version": "2.0.0",
-  "description": "Offline RAG-powered customer services and technical support agent for gas field inspection and maintenance engineers using Foundry Local",
+  "description": "Offline RAG-powered university student support assistant using Foundry Local (Phi-3.5 Mini) + SQLite TF-IDF retrieval",
   "type": "module",
   "scripts": {
     "ingest": "node src/ingest.js",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
@@ -17,19 +18,22 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/leestott/local-rag.git"
+    "url": "https://github.com/Armitorenk/local-rag-university.git"
   },
   "keywords": [
     "rag",
     "offline-ai",
     "foundry-local",
     "phi-3",
-    "gas-field",
-    "support-agent",
+    "university",
+    "student-assistant",
     "sqlite",
     "tfidf"
   ],
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.1.0"
   }
 }
